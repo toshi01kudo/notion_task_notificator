@@ -40,7 +40,7 @@ def main() -> None:
 
     # Notificate to LINE. Post to be separated with tag.
     for sentense in sentense_list:
-        send_line_notify(sentense)
+        send_line_masageapi(sentense)
 
     logging.info("#=== Finish program ===#")
 
@@ -152,6 +152,8 @@ def change_raw_task_to_dict(raw_tasks: list, Projects: RelatedDb, Sprints: Relat
     """
     tasks = []
     for raw_task in raw_tasks:
+        # Task name
+        task_name = raw_task["properties"]["タスク名"]["title"][0]["plain_text"]
         # プロジェクト名
         pj_name = Projects.get_item_from_pd("id", raw_task["properties"]["プロジェクト"]["relation"][0]["id"], "title")
         # スプリント名
@@ -160,6 +162,7 @@ def change_raw_task_to_dict(raw_tasks: list, Projects: RelatedDb, Sprints: Relat
                 "id", raw_task["properties"]["スプリント"]["relation"][0]["id"], "title"
             )
         else:
+            logging.warning(f"{task_name}: Sprint is missing.")
             sprint_name = None
         # Start date
         start_date = None
@@ -171,6 +174,12 @@ def change_raw_task_to_dict(raw_tasks: list, Projects: RelatedDb, Sprints: Relat
             if raw_task["properties"]["期限"]["date"]["end"] is not None:
                 end_time = datetime.datetime.strptime(raw_task["properties"]["期限"]["date"]["end"], "%Y-%m-%d")
                 end_date = end_time.date()
+        # tag default value
+        if len(raw_task["properties"]["タグ"]["multi_select"]) > 0:
+            tag = raw_task["properties"]["タグ"]["multi_select"][0]["name"]
+        else:
+            logging.warning(f"{task_name}: Tag is missing.")
+            tag = "その他"
         task = {
             "title": raw_task["properties"]["タスク名"]["title"][0]["plain_text"],
             "status": raw_task["properties"]["ステータス"]["status"]["name"],
@@ -178,7 +187,7 @@ def change_raw_task_to_dict(raw_tasks: list, Projects: RelatedDb, Sprints: Relat
             "start": start_date,
             "end": end_date,
             "sprint": sprint_name,
-            "tag": raw_task["properties"]["タグ"]["multi_select"][0]["name"],
+            "tag": tag,
         }
         tasks.append(task)
     return tasks
@@ -241,7 +250,7 @@ def make_sentense(pd_tasks: pd.DataFrame) -> list:
         if saved_tag != row.tag:
             saved_tag = row.tag
             sentense_list.append(sentense)
-            sentense = "\n■■" + row.tag + "■■\n"
+            sentense = "■■" + row.tag + "■■\n"
         if saved_pj != row.project:
             saved_pj = row.project
             sentense += f"{row.project}\n"
@@ -251,15 +260,27 @@ def make_sentense(pd_tasks: pd.DataFrame) -> list:
     return sentense_list
 
 
-def send_line_notify(notification_message: str) -> None:
+def send_line_masageapi(notification_message: str) -> None:
     """
     Notificate to LINE
     """
-    line_notify_token = os.getenv("LINE_TOKEN")
-    line_notify_api = "https://notify-api.line.me/api/notify"
-    headers = {"Authorization": f"Bearer {line_notify_token}"}
-    data = {"message": notification_message}
-    requests.post(line_notify_api, headers=headers, data=data)
+    line_token = os.getenv('LINE_CHANNEL_ACCESS_TOKEN')
+    line_group_id = os.getenv('LINE_MESSAGE_API_GROUP_ID')
+    line_api_url = 'https://api.line.me/v2/bot/message/push'
+    headers = {
+        'Content-Type': 'application/json',
+        'Authorization': f'Bearer {line_token}',
+    }
+    data = {
+        'to': line_group_id,
+        'messages': [
+            {
+                'type': 'text',
+                'text': notification_message,
+            },
+        ],
+    }
+    requests.post(line_api_url, headers=headers, data=json.dumps(data))
 
 
 if __name__ == "__main__":
