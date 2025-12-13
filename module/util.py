@@ -36,7 +36,7 @@ def sort_filter(pd_tasks: pd.DataFrame, Projects: 'RelatedDB', Sprints: 'Related
     Returns:
         pd.DataFrame: フィルタリングおよびソートされたタスクのDataFrame。
     """
-    # Fliter: 必須項目が欠けているタスクを除外
+    # Filter: 必須項目が欠けているタスクを除外
     active_tasks = pd_tasks[(pd_tasks["end"].notnull()) & (pd_tasks["sprint"].notnull())]
 
     # 現在のスプリント名を取得

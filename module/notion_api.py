@@ -5,7 +5,7 @@ import logging
 import json
 import datetime
 import pandas as pd
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Union, Tuple
 
 class BaseNotionDB:
     """
@@ -147,56 +147,84 @@ class TaskDB(BaseNotionDB):
         related_dbs: 関連する RelatedDB インスタンスをキーにDB名を持つ辞書。
         version: Notion APIのバージョン。
     """
-    def __init__(self, db_id: str, token: str, related_dbs: Dict[str, RelatedDB], version: str = "2022-06-28") -> None:
+    def __init__(self, db_id: str, token: str, related_dbs: Dict[str, 'RelatedDB'], version: str = "2022-06-28") -> None:
         self.related_dbs = related_dbs
         super().__init__(db_id, token, version)
 
-    def _parse_date_property(self, date_prop: Optional[Dict[str, Any]]) -> tuple[Optional[datetime.date], Optional[datetime.date]]:
+    def _date_string_to_date(self, date_string: str) -> datetime.date:
         """
-        日付プロパティ（期限）を datetime.date に変換するヘルパー関数。
+        日付文字列を datetime.date オブジェクトに変換するヘルパー関数。
+        
+        Args:
+            date_string: NotionのISO 8601形式の日付文字列 (例: "2025-12-31" or "2025-12-31T09:00:00.000+09:00")
+            
+        Returns:
+            datetime.date: 変換された日付オブジェクト。
+        """
+        # タイムスタンプ部分を無視し、日付部分のみを取得してパース
+        return datetime.datetime.strptime(date_string.split("T")[0], "%Y-%m-%d").date()
+
+    def _parse_date_property(self, 
+                             date_prop: Optional[Dict[str, Any]], 
+                             field: str = 'start', 
+                             return_range: bool = False
+                             ) -> Union[Optional[datetime.date], Tuple[Optional[datetime.date], Optional[datetime.date]]]:
+        """
+        Notionの日付プロパティを解析し、指定されたフィールドまたは日付範囲を返す汎用関数。
 
         Args:
-            date_prop: Notionのdateプロパティの辞書。
+            date_prop: Notionのdateプロパティの辞書 ({"start": ..., "end": ...})。
+            field: 取得したい日付フィールド ("start" または "end")。
+            return_range: Trueの場合、(開始日, 終了日) のタプルを返す。Falseの場合、fieldで指定された単一の日付を返す。
 
         Returns:
-            tuple: (開始日, 終了日) のタプル。日付がない場合は None。
+            datetime.date or tuple: 
+                - return_range=False: 指定されたフィールドの日付 (Optional[datetime.date])
+                - return_range=True: (開始日, 終了日) のタプル (tuple[Optional[datetime.date], Optional[datetime.date]])
         """
+        if date_prop is None:
+            if return_range:
+                return None, None
+            return None
+
         start_date = None
         end_date = None
-        if date_prop is not None:
-            # 日付部分のみを取得（タイムスタンプを無視）
-            if date_prop.get("start") is not None:
-                start_time = datetime.datetime.strptime(date_prop["start"].split("T")[0], "%Y-%m-%d")
-                start_date = start_time.date()
+
+        if date_prop.get("start") is not None:
+            start_date = self._date_string_to_date(date_prop["start"])
+        
+        if return_range:
+            # 日付範囲が必要な場合
             if date_prop.get("end") is not None:
-                end_time = datetime.datetime.strptime(date_prop["end"].split("T")[0], "%Y-%m-%d")
-                end_date = end_time.date()
-        return start_date, end_date
+                end_date = self._date_string_to_date(date_prop["end"])
+            return start_date, end_date
+        
+        else:
+            # 単一の日付が必要な場合
+            if field == 'start':
+                return start_date
+            elif field == 'end' and date_prop.get("end") is not None:
+                return self._date_string_to_date(date_prop["end"])
+            
+            return None # 指定されたフィールドがない、またはendでendが空の場合
+
 
     def _process_raw_to_dict(self, raw_tasks: list) -> List[Dict[str, Any]]:
         """
         生のAPIタスクデータを整形された辞書形式に変換する（タスクDB特化）。
-        リレーションシップ（プロジェクト、スプリント）を解決する。
-
-        Args:
-            raw_tasks: APIから取得した生のタスクデータリスト。
-
-        Returns:
-            list: 整形されたタスクの辞書リスト (title, status, project, sprint, start, end, tagを含む)。
         """
         tasks = []
-        Projects: RelatedDB = self.related_dbs["Projects"]
-        Sprints: RelatedDB = self.related_dbs["Sprints"]
+        Projects: 'RelatedDB' = self.related_dbs["Projects"]
+        Sprints: 'RelatedDB' = self.related_dbs["Sprints"]
 
         for raw_task in raw_tasks:
+            task_name = "N/A"
             try:
                 task_name = raw_task["properties"]["タスク名"]["title"][0]["plain_text"]
-
-                # プロジェクト名 (リレーション解決)
                 pj_id = raw_task["properties"]["プロジェクト"]["relation"][0]["id"]
                 pj_name = Projects.get_item_from_pd("id", pj_id, "title")
 
-                # スプリント名 (リレーション解決)
+                # スプリント名解決
                 sprint_relation = raw_task["properties"]["スプリント"]["relation"]
                 sprint_name = None
                 if len(sprint_relation) > 0:
@@ -205,8 +233,18 @@ class TaskDB(BaseNotionDB):
                 else:
                     logging.warning(f"{task_name}: Sprint is missing.")
 
-                # 期限日の処理
-                start_date, end_date = self._parse_date_property(raw_task["properties"]["期限"]["date"])
+                # 期限日の処理 (日付範囲として取得)
+                start_date, end_date = self._parse_date_property(
+                    raw_task["properties"]["期限"]["date"], 
+                    return_range=True
+                )
+                
+                # 作業日の処理 (開始日のみ取得)
+                work_date = self._parse_date_property(
+                    raw_task["properties"]["作業日"]["date"],
+                    field='start',
+                    return_range=False
+                )
 
                 # タグ
                 tag_select = raw_task["properties"]["タグ"]["multi_select"]
@@ -220,11 +258,12 @@ class TaskDB(BaseNotionDB):
                     "project": pj_name,
                     "start": start_date,
                     "end": end_date,
+                    "work_date": work_date,
                     "sprint": sprint_name,
                     "tag": tag,
                 }
                 tasks.append(task)
             except Exception as e:
-                logging.error(f"タスク変換エラー ({raw_task.get('id', 'N/A')}, Name: {task_name if 'task_name' in locals() else 'N/A'}): {e}")
+                logging.error(f"タスク変換エラー ({raw_task.get('id', 'N/A')}, Name: {task_name}): {e}")
                 continue
         return tasks
