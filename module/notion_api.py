@@ -51,7 +51,6 @@ class BaseNotionDB:
 
             # リクエスト送信
             res = requests.post(task_url, headers=self.headers, json=payload)
-            
             if res.status_code != 200:
                 logging.error(f"Error getting DB {self.db_id}: {res.status_code}, message: {res.reason}")
                 raise Exception(f"Notion API Error: {res.status_code}")
