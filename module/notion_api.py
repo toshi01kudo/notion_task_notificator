@@ -320,7 +320,6 @@ class TaskDB(BaseNotionDB):
                     "sprint": sprint_name,
                     "tag": tag,
                     "id": task_id,
-                    "work_date": work_date,
                     "gcal_event_id": gcal_event_id,
                     "last_edited_time": last_edited,
                 }
