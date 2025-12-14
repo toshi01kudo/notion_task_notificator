@@ -30,20 +30,41 @@ class BaseNotionDB:
     def _get_raw_data(self) -> list:
         """
         Notionデータベースから生データを取得する。
+        ページネーションに対応し、100件を超えるデータも全件取得する。
 
         Returns:
-            list: APIレスポンスの 'results' に含まれる生のデータリスト。
+            list: APIレスポンスの 'results' に含まれる生のデータリスト（全件）。
 
         Raises:
             Exception: APIリクエストが失敗した場合。
         """
         task_url = f"https://api.notion.com/v1/databases/{self.db_id}/query"
-        res = requests.post(task_url, headers=self.headers)
-        if res.status_code == 200:
-            return json.loads(res.text)["results"]
-        else:
-            logging.error(f"Error getting DB {self.db_id}: {res.status_code}, message: {res.reason}")
-            raise Exception(f"Notion API Error: {res.status_code}")
+        all_results = []
+        has_more = True
+        start_cursor = None
+
+        while has_more:
+            # ペイロード（リクエストボディ）の作成
+            payload = {"page_size": 100}  # 最大値の100を指定
+            if start_cursor:
+                payload["start_cursor"] = start_cursor
+
+            # リクエスト送信
+            res = requests.post(task_url, headers=self.headers, json=payload)
+            if res.status_code != 200:
+                logging.error(f"Error getting DB {self.db_id}: {res.status_code}, message: {res.reason}")
+                raise Exception(f"Notion API Error: {res.status_code}")
+
+            data = res.json()
+            results = data.get("results", [])
+            all_results.extend(results)
+
+            # 次のページがあるか確認
+            has_more = data.get("has_more", False)
+            start_cursor = data.get("next_cursor")
+
+        logging.info(f"Fetched {len(all_results)} items from DB {self.db_id}")
+        return all_results
 
     def _process_raw_to_dict(self, raw_items: list) -> List[Dict[str, Any]]:
         """
