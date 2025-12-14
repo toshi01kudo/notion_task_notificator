@@ -115,6 +115,27 @@ class BaseNotionDB:
             logging.error(f"Error: Value not found for {in_cul}='{in_value}' in DB {self.db_id}")
             raise LookupError(f"値が見つかりません: {in_value}")
 
+    # Notionページを更新
+    def update_page(self, page_id: str, properties: Dict[str, Any]) -> None:
+        """
+        指定したページのプロパティを更新する。
+
+        Args:
+            page_id (str): 更新対象のNotionページID。
+            properties (Dict[str, Any]): 更新するプロパティの内容 (API仕様に基づく辞書構造)。
+
+        Raises:
+            Exception: 更新リクエストが失敗した場合。
+        """
+        update_url = f"https://api.notion.com/v1/pages/{page_id}"
+        payload = {"properties": properties}
+        
+        res = requests.patch(update_url, headers=self.headers, json=payload)
+        if res.status_code != 200:
+            logging.error(f"Failed to update page {page_id}: {res.status_code} {res.text}")
+            raise Exception(f"Notion Update Error: {res.status_code}")
+        logging.info(f"Updated Notion Page: {page_id}")
+
 
 class RelatedDB(BaseNotionDB):
     """
@@ -242,8 +263,13 @@ class TaskDB(BaseNotionDB):
             task_name = "N/A"
             try:
                 task_name = raw_task["properties"]["タスク名"]["title"][0]["plain_text"]
-                pj_id = raw_task["properties"]["プロジェクト"]["relation"][0]["id"]
-                pj_name = Projects.get_item_from_pd("id", pj_id, "title")
+
+                # プロジェクト名
+                pj_relation = raw_task["properties"]["プロジェクト"]["relation"]
+                pj_name = ""
+                if len(pj_relation) > 0:
+                    pj_id = pj_relation[0]["id"]
+                    pj_name = Projects.get_item_from_pd("id", pj_id, "title")
 
                 # スプリント名解決
                 sprint_relation = raw_task["properties"]["スプリント"]["relation"]
@@ -259,13 +285,9 @@ class TaskDB(BaseNotionDB):
                     raw_task["properties"]["期限"]["date"], 
                     return_range=True
                 )
-                
-                # 作業日の処理 (開始日のみ取得)
-                work_date = self._parse_date_property(
-                    raw_task["properties"]["作業日"]["date"],
-                    field='start',
-                    return_range=False
-                )
+
+                # ステータス
+                status = raw_task["properties"]["ステータス"]["status"]["name"]
 
                 # タグ
                 tag_select = raw_task["properties"]["タグ"]["multi_select"]
@@ -273,15 +295,34 @@ class TaskDB(BaseNotionDB):
                 if len(tag_select) == 0:
                      logging.warning(f"{task_name}: Tag is missing. Defaulting to 'その他'.")
 
+                # IDと最終更新日時
+                task_id = raw_task["id"]
+                last_edited = raw_task["last_edited_time"]
+
+                # 作業日の処理 (開始日のみ取得)
+                work_date = self._parse_date_property(
+                    raw_task["properties"]["作業日"]["date"],
+                    field='start',
+                    return_range=False
+                )
+
+                # GCal Event ID
+                gcal_id_prop = raw_task["properties"].get("GCal_Event_ID", {}).get("rich_text", [])
+                gcal_event_id = gcal_id_prop[0]["plain_text"] if gcal_id_prop else None
+
                 task = {
                     "title": task_name,
-                    "status": raw_task["properties"]["ステータス"]["status"]["name"],
+                    "status": status,
                     "project": pj_name,
                     "start": start_date,
                     "end": end_date,
                     "work_date": work_date,
                     "sprint": sprint_name,
                     "tag": tag,
+                    "id": task_id,
+                    "work_date": work_date,
+                    "gcal_event_id": gcal_event_id,
+                    "last_edited_time": last_edited,
                 }
                 tasks.append(task)
             except Exception as e:
