@@ -22,11 +22,16 @@ def sort_filter(pd_tasks: pd.DataFrame, Projects: 'RelatedDB', Sprints: 'Related
     通知前にタスクをフィルタリング・ソートする。
 
     フィルタリング条件:
-        - 終了日が設定されている
-        - スプリントが設定されている
-        - 現在進行中のスプリントに属している
-        - 期限が明日まで、または開始日が今日以前である
-        - ステータスが「未着手」「進行中」「反応待ち」のいずれかである
+        1. 必須条件:
+           - スプリントが設定されていること
+           - 「期限(start)」または「作業日(work_date)」のいずれかが設定されていること
+             (※単一日付設定の場合、startに日付が入るためこちらをチェックする)
+        2. 抽出条件 (いずれかに合致):
+           - 期限(end)が設定されており、明日まで (is_due_soon)
+           - 開始日(start)が設定されており、今日以前 (is_overdue)
+           - 作業日(work_date)が設定されており、今日 (is_work_today)
+        3. ステータス条件:
+           - 「未着手」「進行中」「反応待ち」のいずれか
 
     Args:
         pd_tasks: タスクの全データを含むDataFrame。
@@ -36,8 +41,12 @@ def sort_filter(pd_tasks: pd.DataFrame, Projects: 'RelatedDB', Sprints: 'Related
     Returns:
         pd.DataFrame: フィルタリングおよびソートされたタスクのDataFrame。
     """
-    # Filter: 必須項目が欠けているタスクを除外
-    active_tasks = pd_tasks[(pd_tasks["end"].notnull()) & (pd_tasks["sprint"].notnull())]
+    # 1. Pre-Filter: スプリントがあり、かつ「期限(start) または 作業日」が設定されているタスクのみ残す
+    # 修正: end ではなく start の有無を確認するように変更
+    active_tasks = pd_tasks[
+        (pd_tasks["sprint"].notnull()) & 
+        ((pd_tasks["start"].notnull()) | (pd_tasks["work_date"].notnull()))
+    ]
 
     # 現在のスプリント名を取得
     try:
@@ -49,12 +58,20 @@ def sort_filter(pd_tasks: pd.DataFrame, Projects: 'RelatedDB', Sprints: 'Related
     today = datetime.date.today()
     tomorrow = datetime.date.today() + datetime.timedelta(days=1)
 
-    # フィルタリング条件
-    is_due_soon = active_tasks["end"] <= tomorrow  # 期限が明日以前
-    is_overdue = active_tasks["start"] <= today    # 開始日が今日以前
+    # 2. Filtering Logic (Hot判定)
 
+    # A: 期限(終了日)があり、明日まで
+    is_due_soon = (active_tasks["end"].notnull()) & (active_tasks["end"] <= tomorrow)
+
+    # B: 開始日があり、今日以前 (単一日付の期限切れもここで拾う)
+    is_overdue = (active_tasks["start"].notnull()) & (active_tasks["start"] <= today)
+
+    # C: 作業日があり、今日
+    is_work_today = (active_tasks["work_date"].notnull()) & (active_tasks["work_date"] == today)
+
+    # フィルタ適用
     hot_tasks = active_tasks[
-        (is_due_soon | is_overdue)
+        (is_due_soon | is_overdue | is_work_today) # A or B or C
         & (active_tasks["sprint"] == current_sprint)
         & (
             (active_tasks["status"] == "未着手")
@@ -106,9 +123,20 @@ def make_sentence(pd_tasks: pd.DataFrame) -> List[str]:
             saved_pj = row.project
             sentence += f"【{row.project}】\n"
 
-        # タスク詳細（タイトル、ステータス、期限）
-        end_date_str = row.end.strftime('%Y-%m-%d') if pd.notna(row.end) else '期限なし'
-        sentence += f" - [{row.status}] {row.title} (期限: {end_date_str})\n"
+        # 日付情報の表示ロジック
+        # 1. 終了日(end)があればそれを表示
+        # 2. なければ開始日(start)を表示
+        # 3. それもなければ作業日(work_date)を表示
+        if pd.notna(row.end):
+            date_info = f"期限: {row.end.strftime('%Y-%m-%d')}"
+        elif pd.notna(row.start):
+            date_info = f"期限: {row.start.strftime('%Y-%m-%d')}"
+        elif pd.notna(row.work_date):
+            date_info = f"作業日: {row.work_date.strftime('%Y-%m-%d')}"
+        else:
+            date_info = "日付未定"
+
+        sentence += f" - [{row.status}] {row.title} ({date_info})\n"
 
     # 最後に残った文章をリストに追加
     sentence_list.append(sentence)
