@@ -57,7 +57,8 @@ pip install pandas requests python-dotenv google-api-python-client google-auth
 
 ### 3\. Notion データベースの準備
 
-タスク管理用データベースに以下のプロパティが存在することを確認してください。
+タスク管理用データベースには、Notion のテンプレートは[課題管理](https://www.notion.so/gallery/templates/notion-issue-tracker?cr=ser%253A%25E3%2582%25B9%25E3%2583%2597%25E3%2583%25AA%25E3%2583%25B3%25E3%2583%2588)を活用しています。
+タスクのデータベースに以下のプロパティが存在することを確認、もしくは、追加してください。
 
 | プロパティ名      | 種類           | 用途                                      |
 | :---------------- | :------------- | :---------------------------------------- |
