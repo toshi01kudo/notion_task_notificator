@@ -10,9 +10,15 @@ Notion のタスクデータベースを中心に、LINE へのリマインド�
     - Notion のタスク DB から、期限が迫っているタスクや着手すべきタスクを抽出します。
     - LINE Messaging API を使用して、指定されたグループまたはユーザーに通知を送ります。
 2.  **Google カレンダー同期 (`sync_main.py`)**:
+
     - Notion の「作業日」プロパティと Google カレンダーを双方向同期します。
     - 更新日時 (`last_edited_time`) を比較し、新しい方の情報を採用します。
     - Notion 側で「保留中」または「作業日なし」となった場合、カレンダーのタイトルを【中止】に変更します。
+
+3.  **四半期振り返りレポート生成 (`quarterly_review.py`)**:
+    - Notion の完了タスクと Google カレンダーのイベント実績を収集します。
+    - Google Gemini (AI) を使用して、活動内容を分析し、振り返りレポートを自動生成します。
+    - 結果を Notion の「振り返りデータベース」に新規ページとして保存します。
 
 ## ディレクトリ構成
 
@@ -20,6 +26,7 @@ Notion のタスクデータベースを中心に、LINE へのリマインド�
 .
 ├── task_notifier.py     # LINE通知用スクリプト (Main)
 ├── sync_main.py         # Googleカレンダー同期用スクリプト (Main)
+├── quarterly_review.py  # 四半期振り返り生成スクリプト (Main)
 ├── service_account.json # Googleサービスアカウントキー (GCPからダウンロード)
 ├── .env                 # 環境変数設定ファイル
 ├── requirements.txt     # 依存ライブラリリスト
@@ -43,7 +50,7 @@ Notion のタスクデータベースを中心に、LINE へのリマインド�
 ### 1\. ライブラリのインストール
 
 ```bash
-pip install pandas requests python-dotenv google-api-python-client google-auth
+pip install pandas requests python-dotenv google-api-python-client google-auth google-generativeai
 ```
 
 ※ 必要に応じて `requirements.txt` を作成して管理してください。
@@ -81,6 +88,7 @@ NOTION_TOKEN=secret_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 NOTION_TASK_ID=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx  # タスクDBのID
 NOTION_PJ_ID=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx    # プロジェクトDBのID
 NOTION_SPRINT_ID=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx # スプリントDBのID
+NOTION_REVIEW_DATABASE_ID=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx # 振り返りページ作成先のDB ID
 
 # --- LINE Messaging API ---
 LINE_CHANNEL_ACCESS_TOKEN=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
@@ -89,8 +97,12 @@ LINE_MESSAGE_API_GROUP_ID=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx # 通知先のユー�
 # --- Google Calendar ---
 # 同期対象のカレンダーID (メインカレンダーの場合はGmailアドレス、別カレンダーの場合は固有ID)
 GOOGLE_CALENDAR_ID=xxxxxxxx@group.calendar.google.com
+GOOGLE_CALENDAR_IDS=primary, ..., ...
 # サービスアカウントキーのパス (デフォルトは service_account.json)
 GOOGLE_SERVICE_ACCOUNT_FILE=service_account.json
+
+# --- Google Gemini API ---
+GOOGLE_API_KEY=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx  # AIスタジオで発行したAPIキー
 ```
 
 ## 使用方法
@@ -123,6 +135,15 @@ Ubuntu/Linux 環境での `crontab -e` 設定例です。
 */15 * * * * cd /path/to/project && /usr/bin/python3 sync_main.py >> sync.log 2>&1
 ```
 
+### 四半期振り返りの生成
+
+直前の四半期（1〜3 月、4〜6 月...）のデータを収集し、Notion にレポートを作成します。
+四半期が終わったタイミング（4 月、7 月...の初旬）での実行を想定しています。
+
+```bash
+python quarterly_review.py
+```
+
 ## 仕様詳細
 
 ### カレンダー同期ルール
@@ -138,3 +159,7 @@ Ubuntu/Linux 環境での `crontab -e` 設定例です。
 ## ライセンス
 
 This project is for personal use.
+
+```
+
+```
