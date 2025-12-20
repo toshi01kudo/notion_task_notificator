@@ -50,7 +50,7 @@ Notion のタスクデータベースを中心に、LINE へのリマインド�
 ### 1\. ライブラリのインストール
 
 ```bash
-pip install pandas requests python-dotenv google-api-python-client google-auth google-generativeai
+pip install pandas requests python-dotenv google-api-python-client google-auth google-genai
 ```
 
 ※ 必要に応じて `requirements.txt` を作成して管理してください。
