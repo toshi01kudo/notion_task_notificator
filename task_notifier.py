@@ -2,7 +2,6 @@
 
 import logging
 import os
-import pandas as pd
 from dotenv import load_dotenv
 
 from module.notion_api import RelatedDB, TaskDB
@@ -30,16 +29,14 @@ def main() -> None:
         # 1. 関連DBのインスタンス化とデータ取得 (初期化時にAPIアクセスとDataFrame生成を行う)
         logging.info("Initializing Related Databases (Projects & Sprints)...")
         token = os.getenv("NOTION_TOKEN")
-        
+
         Projects = RelatedDB(os.getenv("NOTION_PJ_ID"), token)
         Sprints = RelatedDB(os.getenv("NOTION_SPRINT_ID"), token)
 
         # 2. タスクDBのインスタンス化とデータ取得
         logging.info("Initializing Task Database...")
         Tasks = TaskDB(
-            db_id=os.getenv("NOTION_TASK_ID"),
-            token=token,
-            related_dbs={"Projects": Projects, "Sprints": Sprints}
+            db_id=os.getenv("NOTION_TASK_ID"), token=token, related_dbs={"Projects": Projects, "Sprints": Sprints}
         )
 
         # 3. フィルタリングとソート

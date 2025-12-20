@@ -2,10 +2,10 @@
 
 import requests
 import logging
-import json
 import datetime
 import pandas as pd
 from typing import List, Dict, Any, Optional, Union, Tuple
+
 
 class BaseNotionDB:
     """
@@ -16,12 +16,13 @@ class BaseNotionDB:
         token (str): Notionインテグレーションの認証トークン。
         version (str, optional): Notion APIのバージョン。デフォルトは "2022-06-28"。
     """
+
     def __init__(self, db_id: str, token: str, version: str = "2022-06-28") -> None:
         self.db_id = db_id
         self.token = token
         self.pd_items: pd.DataFrame = pd.DataFrame()  # 最終的に格納されるDataFrame
         self.headers = {
-            "Authorization": f'Bearer {token}',
+            "Authorization": f"Bearer {token}",
             "Content-Type": "application/json",
             "Notion-Version": version,
         }
@@ -75,7 +76,7 @@ class BaseNotionDB:
 
         Args:
             raw_items: APIから取得した生のデータリスト。
-        
+
         Raises:
             NotImplementedError: 子クラスでの実装がない場合。
         """
@@ -129,13 +130,12 @@ class BaseNotionDB:
         """
         update_url = f"https://api.notion.com/v1/pages/{page_id}"
         payload = {"properties": properties}
-        
+
         res = requests.patch(update_url, headers=self.headers, json=payload)
         if res.status_code != 200:
             logging.error(f"Failed to update page {page_id}: {res.status_code} {res.text}")
             raise Exception(f"Notion Update Error: {res.status_code}")
         logging.info(f"Updated Notion Page: {page_id}")
-
 
     def query(self, filter_payload: Dict[str, Any]) -> List[Dict[str, Any]]:
         """条件を指定してデータベースを検索し、結果を取得します。
@@ -152,7 +152,7 @@ class BaseNotionDB:
         """
         url = f"https://api.notion.com/v1/databases/{self.db_id}/query"
         payload = {"filter": filter_payload} if filter_payload else {}
-        
+
         try:
             response = requests.post(url, headers=self.headers, json=payload)
             response.raise_for_status()
@@ -161,8 +161,9 @@ class BaseNotionDB:
             logging.error(f"Notion API query error: {e}")
             return []
 
-
-    def create_page(self, properties: Dict[str, Any], children: Optional[List[Dict[str, Any]]] = None) -> Optional[Dict[str, Any]]:
+    def create_page(
+        self, properties: Dict[str, Any], children: Optional[List[Dict[str, Any]]] = None
+    ) -> Optional[Dict[str, Any]]:
         """このデータベース(親)配下に新規ページを作成します。
 
         Args:
@@ -173,11 +174,8 @@ class BaseNotionDB:
             Optional[Dict[str, Any]]: 作成されたページオブジェクト。失敗時はNone。
         """
         url = "https://api.notion.com/v1/pages"
-        
-        body = {
-            "parent": {"database_id": self.db_id},
-            "properties": properties
-        }
+
+        body = {"parent": {"database_id": self.db_id}, "properties": properties}
         if children:
             body["children"] = children
 
@@ -189,50 +187,50 @@ class BaseNotionDB:
             logging.error(f"Notion create page error: {e}")
             return None
 
-
     def append_children(self, block_id: str, children: List[Dict[str, Any]]) -> Dict[str, Any]:
-            """指定したブロック（ページ）の子要素としてブロックを追加します。
+        """指定したブロック（ページ）の子要素としてブロックを追加します。
 
-            Notion APIの制限（1回あたり100ブロック）を考慮し、分割して送信します。
+        Notion APIの制限（1回あたり100ブロック）を考慮し、分割して送信します。
 
-            Args:
-                block_id (str): 追加先のブロックIDまたはページID。
-                children (List[Dict[str, Any]]): 追加するブロックオブジェクトのリスト。
+        Args:
+            block_id (str): 追加先のブロックIDまたはページID。
+            children (List[Dict[str, Any]]): 追加するブロックオブジェクトのリスト。
 
-            Returns:
-                Dict[str, Any]: 最後のバッチ処理のレスポンスJSON。エラー時は例外を送出します。
-            
-            Raises:
-                requests.exceptions.RequestException: APIリクエストが失敗した場合。
-            """
-            url = f"https://api.notion.com/v1/blocks/{block_id}/children"
-            
-            batch_size = 100
-            last_response = {}
-            
-            for i in range(0, len(children), batch_size):
-                batch = children[i : i + batch_size]
-                payload = {"children": batch}
-                
-                try:
-                    # Notion APIでは既存ブロックへの子ブロック追加は
-                    # /v1/blocks/{block_id}/children に対する PATCH で行う
-                    # （新規ページ作成は /v1/pages への POST を使用）
-                    response = requests.patch(url, headers=self.headers, json=payload)
-                    response.raise_for_status()
-                    last_response = response.json()
-                    logging.info(f"Appended blocks batch {i//batch_size + 1}")
-                except requests.exceptions.RequestException as e:
-                    logging.error(f"Append children error at batch {i}: {e}")
-                    raise e
+        Returns:
+            Dict[str, Any]: 最後のバッチ処理のレスポンスJSON。エラー時は例外を送出します。
 
-            return last_response
+        Raises:
+            requests.exceptions.RequestException: APIリクエストが失敗した場合。
+        """
+        url = f"https://api.notion.com/v1/blocks/{block_id}/children"
+
+        batch_size = 100
+        last_response = {}
+
+        for i in range(0, len(children), batch_size):
+            batch = children[i: i + batch_size]
+            payload = {"children": batch}
+
+            try:
+                # Notion APIでは既存ブロックへの子ブロック追加は
+                # /v1/blocks/{block_id}/children に対する PATCH で行う
+                # （新規ページ作成は /v1/pages への POST を使用）
+                response = requests.patch(url, headers=self.headers, json=payload)
+                response.raise_for_status()
+                last_response = response.json()
+                logging.info(f"Appended blocks batch {i//batch_size + 1}")
+            except requests.exceptions.RequestException as e:
+                logging.error(f"Append children error at batch {i}: {e}")
+                raise e
+
+        return last_response
 
 
 class RelatedDB(BaseNotionDB):
     """
     プロジェクトやスプリントなど、シンプルな構造の関連DBクラス。
     """
+
     def _process_raw_to_dict(self, raw_items: list) -> List[Dict[str, Any]]:
         """
         生のAPIデータをシンプルな辞書形式に変換する（関連DB特化）。
@@ -244,7 +242,8 @@ class RelatedDB(BaseNotionDB):
             list: 整形された辞書リスト (title, id, statusを含む)。
         """
         items = []
-        if not raw_items: return []
+        if not raw_items:
+            return []
 
         # DBの種別に応じて要素名を動的に判定
         prop_keys = raw_items[0]["properties"].keys()
@@ -281,28 +280,29 @@ class TaskDB(BaseNotionDB):
         related_dbs: 関連する RelatedDB インスタンスをキーにDB名を持つ辞書。
         version: Notion APIのバージョン。
     """
-    def __init__(self, db_id: str, token: str, related_dbs: Dict[str, 'RelatedDB'], version: str = "2022-06-28") -> None:
+
+    def __init__(
+        self, db_id: str, token: str, related_dbs: Dict[str, "RelatedDB"], version: str = "2022-06-28"
+    ) -> None:
         self.related_dbs = related_dbs
         super().__init__(db_id, token, version)
 
     def _date_string_to_date(self, date_string: str) -> datetime.date:
         """
         日付文字列を datetime.date オブジェクトに変換するヘルパー関数。
-        
+
         Args:
             date_string: NotionのISO 8601形式の日付文字列 (例: "2025-12-31" or "2025-12-31T09:00:00.000+09:00")
-            
+
         Returns:
             datetime.date: 変換された日付オブジェクト。
         """
         # タイムスタンプ部分を無視し、日付部分のみを取得してパース
         return datetime.datetime.strptime(date_string.split("T")[0], "%Y-%m-%d").date()
 
-    def _parse_date_property(self, 
-                             date_prop: Optional[Dict[str, Any]], 
-                             field: str = 'start', 
-                             return_range: bool = False
-                             ) -> Union[Optional[datetime.date], Tuple[Optional[datetime.date], Optional[datetime.date]]]:
+    def _parse_date_property(
+        self, date_prop: Optional[Dict[str, Any]], field: str = "start", return_range: bool = False
+    ) -> Union[Optional[datetime.date], Tuple[Optional[datetime.date], Optional[datetime.date]]]:
         """
         Notionの日付プロパティを解析し、指定されたフィールドまたは日付範囲を返す汎用関数。
 
@@ -312,7 +312,7 @@ class TaskDB(BaseNotionDB):
             return_range: Trueの場合、(開始日, 終了日) のタプルを返す。Falseの場合、fieldで指定された単一の日付を返す。
 
         Returns:
-            datetime.date or tuple: 
+            datetime.date or tuple:
                 - return_range=False: 指定されたフィールドの日付 (Optional[datetime.date])
                 - return_range=True: (開始日, 終了日) のタプル (tuple[Optional[datetime.date], Optional[datetime.date]])
         """
@@ -326,30 +326,29 @@ class TaskDB(BaseNotionDB):
 
         if date_prop.get("start") is not None:
             start_date = self._date_string_to_date(date_prop["start"])
-        
+
         if return_range:
             # 日付範囲が必要な場合
             if date_prop.get("end") is not None:
                 end_date = self._date_string_to_date(date_prop["end"])
             return start_date, end_date
-        
+
         else:
             # 単一の日付が必要な場合
-            if field == 'start':
+            if field == "start":
                 return start_date
-            elif field == 'end' and date_prop.get("end") is not None:
+            elif field == "end" and date_prop.get("end") is not None:
                 return self._date_string_to_date(date_prop["end"])
-            
-            return None # 指定されたフィールドがない、またはendでendが空の場合
 
+            return None  # 指定されたフィールドがない、またはendでendが空の場合
 
     def _process_raw_to_dict(self, raw_tasks: list) -> List[Dict[str, Any]]:
         """
         生のAPIタスクデータを整形された辞書形式に変換する（タスクDB特化）。
         """
         tasks = []
-        Projects: 'RelatedDB' = self.related_dbs["Projects"]
-        Sprints: 'RelatedDB' = self.related_dbs["Sprints"]
+        Projects: "RelatedDB" = self.related_dbs["Projects"]
+        Sprints: "RelatedDB" = self.related_dbs["Sprints"]
 
         for raw_task in raw_tasks:
             task_name = "N/A"
@@ -374,8 +373,7 @@ class TaskDB(BaseNotionDB):
 
                 # 期限日の処理 (日付範囲として取得)
                 start_date, end_date = self._parse_date_property(
-                    raw_task["properties"]["期限"]["date"], 
-                    return_range=True
+                    raw_task["properties"]["期限"]["date"], return_range=True
                 )
 
                 # ステータス
@@ -385,7 +383,7 @@ class TaskDB(BaseNotionDB):
                 tag_select = raw_task["properties"]["タグ"]["multi_select"]
                 tag = tag_select[0]["name"] if len(tag_select) > 0 else "その他"
                 if len(tag_select) == 0:
-                     logging.warning(f"{task_name}: Tag is missing. Defaulting to 'その他'.")
+                    logging.warning(f"{task_name}: Tag is missing. Defaulting to 'その他'.")
 
                 # IDと最終更新日時
                 task_id = raw_task["id"]
@@ -393,9 +391,7 @@ class TaskDB(BaseNotionDB):
 
                 # 作業日の処理 (開始日のみ取得)
                 work_date = self._parse_date_property(
-                    raw_task["properties"]["作業日"]["date"],
-                    field='start',
-                    return_range=False
+                    raw_task["properties"]["作業日"]["date"], field="start", return_range=False
                 )
 
                 # GCal Event ID
@@ -421,7 +417,6 @@ class TaskDB(BaseNotionDB):
                 continue
         return tasks
 
-
     def get_done_tasks(self, start_date: str, end_date: str) -> List[Dict[str, Any]]:
         """指定期間内に完了したタスクを取得します。
 
@@ -435,24 +430,9 @@ class TaskDB(BaseNotionDB):
         # ※プロパティ名は既存のCSV設定に合わせて「ステータス」「作業日」としています
         filter_condition = {
             "and": [
-                {
-                    "property": "ステータス", 
-                    "status": {
-                        "equals": "完了"
-                    }
-                },
-                {
-                    "property": "作業日",
-                    "date": {
-                        "on_or_after": start_date
-                    }
-                },
-                {
-                    "property": "作業日",
-                    "date": {
-                        "on_or_before": end_date
-                    }
-                }
+                {"property": "ステータス", "status": {"equals": "完了"}},
+                {"property": "作業日", "date": {"on_or_after": start_date}},
+                {"property": "作業日", "date": {"on_or_before": end_date}},
             ]
         }
         return self.query(filter_condition)
@@ -460,7 +440,7 @@ class TaskDB(BaseNotionDB):
 
 class ReviewDB(BaseNotionDB):
     """振り返りページ保存用のデータベースクラス。BaseNotionDBを継承。"""
-    
+
     def _load_and_process_data(self) -> None:
         """データロード処理のオーバーライド。
 
@@ -481,33 +461,14 @@ class ReviewDB(BaseNotionDB):
         # 長文対策（Notion APIのブロック制限対策として簡易的にカット）
         truncated_content = content[:2000]
 
-        properties = {
-            "Name": { # ※振り返りDBのタイトル列名に合わせてください
-                "title": [
-                    {
-                        "text": {
-                            "content": title
-                        }
-                    }
-                ]
-            }
-        }
+        properties = {"Name": {"title": [{"text": {"content": title}}]}}  # ※振り返りDBのタイトル列名に合わせてください
 
         children = [
             {
                 "object": "block",
                 "type": "paragraph",
-                "paragraph": {
-                    "rich_text": [
-                        {
-                            "type": "text",
-                            "text": {
-                                "content": truncated_content
-                            }
-                        }
-                    ]
-                }
+                "paragraph": {"rich_text": [{"type": "text", "text": {"content": truncated_content}}]},
             }
         ]
-        
+
         return self.create_page(properties, children)

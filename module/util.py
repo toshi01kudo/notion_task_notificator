@@ -3,7 +3,7 @@
 import logging
 import pandas as pd
 import datetime
-from typing import List, TYPE_CHECKING, Optional
+from typing import List, TYPE_CHECKING
 
 # RelatedDB クラスを型ヒントとしてのみインポートするための記述
 # 実行時の循環参照を防ぎ、静的解析ツールでの型チェックを可能にする
@@ -13,11 +13,12 @@ else:
     # 実行時に参照する際はダミーまたは実行可能オブジェクトを定義
     class RelatedDB:
         """実行時のダミー定義。実際には notion_api.py からインポートされる。"""
+
         def get_item_from_pd(self, in_cul: str, in_value: str, out_cul: str) -> str:
             raise NotImplementedError("This is a placeholder class.")
 
 
-def sort_filter(pd_tasks: pd.DataFrame, Projects: 'RelatedDB', Sprints: 'RelatedDB') -> pd.DataFrame:
+def sort_filter(pd_tasks: pd.DataFrame, Projects: "RelatedDB", Sprints: "RelatedDB") -> pd.DataFrame:
     """
     通知前にタスクをフィルタリング・ソートする。
 
@@ -44,8 +45,7 @@ def sort_filter(pd_tasks: pd.DataFrame, Projects: 'RelatedDB', Sprints: 'Related
     # 1. Pre-Filter: スプリントがあり、かつ「期限(start) または 作業日」が設定されているタスクのみ残す
     # 修正: end ではなく start の有無を確認するように変更
     active_tasks = pd_tasks[
-        (pd_tasks["sprint"].notnull()) & 
-        ((pd_tasks["start"].notnull()) | (pd_tasks["work_date"].notnull()))
+        (pd_tasks["sprint"].notnull()) & ((pd_tasks["start"].notnull()) | (pd_tasks["work_date"].notnull()))
     ]
 
     # 現在のスプリント名を取得
@@ -71,7 +71,7 @@ def sort_filter(pd_tasks: pd.DataFrame, Projects: 'RelatedDB', Sprints: 'Related
 
     # フィルタ適用
     hot_tasks = active_tasks[
-        (is_due_soon | is_overdue | is_work_today) # A or B or C
+        (is_due_soon | is_overdue | is_work_today)  # A or B or C
         & (active_tasks["sprint"] == current_sprint)
         & (
             (active_tasks["status"] == "未着手")
