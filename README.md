@@ -1,6 +1,6 @@
-# Notion Task Sync & Notification System
+# Notion Task Assistant
 
-Notion のタスクデータベースを中心に、LINE へのリマインド通知と Google カレンダーとの双方向同期を行う Python システムです。
+Notion のタスクデータベースを中心に、LINE へのリマインド通知と Google カレンダーとの双方向同期、そして AI による振り返り作成を行う Python システムです。
 
 ## 概要
 
