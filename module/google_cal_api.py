@@ -113,3 +113,43 @@ class GoogleCalendarAPI:
             return self.service.events().get(calendarId=self.calendar_id, eventId=event_id).execute()
         except Exception:
             return None
+
+
+    def get_events(
+        self,
+        start_time: datetime.datetime,
+        end_time: datetime.datetime,
+        calendar_id: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """指定された期間とカレンダーIDに基づいてイベントを取得します（日時ベース）。
+
+        このメソッドは、`datetime.date` を受け取る `list_events()` の「日付ベース」の API に対し、
+        開始・終了を `datetime.datetime` で指定したい場合のための「日時ベース」の補完的な API です。
+        すなわち、日単位の範囲取得には `list_events()` を、時刻単位でより細かい期間指定が必要な場合には
+        この `get_events()` を使用します。
+
+        Args:
+            start_time (datetime.datetime): 取得範囲の開始日時。
+            end_time (datetime.datetime): 取得範囲の終了日時。
+            calendar_id (Optional[str], optional): 取得対象のカレンダーID。
+                None の場合はこのインスタンスの ``self.calendar_id`` が使用されます。
+        Returns:
+            List[Dict[str, Any]]: 取得したイベント情報のリスト（辞書形式）。
+        """
+        # calendar_id が指定されていない場合はインスタンスの calendar_id を利用する
+        if calendar_id is None:
+            calendar_id = self.calendar_id
+
+        # "YYYY-MM-DDTHH:MM:SSZ" の形式に強制変換します
+        time_min_str = start_time.astimezone(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+        time_max_str = end_time.astimezone(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+        
+        events_result = self.service.events().list(
+            calendarId=calendar_id,
+            timeMin=time_min_str,
+            timeMax=time_max_str,
+            singleEvents=True,
+            orderBy='startTime'
+        ).execute()
+        
+        return events_result.get('items', [])
