@@ -3,7 +3,7 @@ import sys
 import datetime
 from collections import defaultdict
 from dateutil.relativedelta import relativedelta
-import google.generativeai as genai
+from google import genai
 from dotenv import load_dotenv
 
 # 既存モジュールのインポート
@@ -235,8 +235,7 @@ def generate_review(text_data: str, period_str: str) -> str:
         print("Gemini API Key is missing.")
         return None
 
-    genai.configure(api_key=GOOGLE_API_KEY)
-    model = genai.GenerativeModel('gemini-2.5-flash')
+    client = genai.Client(api_key=GOOGLE_API_KEY)
 
     prompt = f"""
 あなたは客観的なデータ分析官です。
@@ -247,14 +246,17 @@ def generate_review(text_data: str, period_str: str) -> str:
 - **トーン&マナー:** 冷静、客観的、簡潔、ビジネスライク。感情的な表現やキャラクター性は不要です。事実を淡々と記述してください。
 - **構成:** 以下の3つの観点で事実に基づいた分析を行ってください。
     1. **TRPG活動:** 実施回数、傾向、特筆すべきセッション。
-    2. **サークル活動 (Luxy):** 運営タスクの進捗、イベント実績。
+    2. **サークル活動 (Luxy/T4):** 運営タスクの進捗、イベント実績。
     3. **全体総括:** その他プライベートや技術学習を含めた四半期の総評。
 
 ## 入力データ
 {text_data}
     """
     try:
-        response = model.generate_content(prompt)
+        response = client.models.generate_content(
+            model='gemini-2.5-flash', 
+            contents=prompt
+        )
         return response.text
     except Exception as e:
         print(f"Gemini API Error: {e}")
@@ -276,7 +278,7 @@ def main():
         tasks_db = TaskDB(
             db_id=NOTION_TASK_ID, 
             token=NOTION_TOKEN, 
-            related_dbs={"Projects": dummy_db, "Sprints": dummy_db} # キー名は任意
+            related_dbs={"Projects": dummy_db, "Sprints": dummy_db}
         )
         
         # DataFrameを使わず、直接APIを叩くメソッドを使用
