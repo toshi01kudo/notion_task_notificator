@@ -187,7 +187,7 @@ def format_ai_content_blocks(markdown_text: str) -> list:
     # 長文対策として2000文字ごとに分割してParagraphブロックにする
     chunk_size = 2000
     for i in range(0, len(markdown_text), chunk_size):
-        chunk = markdown_text[i: i + chunk_size]
+        chunk = markdown_text[i : i + chunk_size]
         blocks.append(
             {
                 "object": "block",

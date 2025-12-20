@@ -208,7 +208,7 @@ class BaseNotionDB:
         last_response = {}
 
         for i in range(0, len(children), batch_size):
-            batch = children[i: i + batch_size]
+            batch = children[i : i + batch_size]
             payload = {"children": batch}
 
             try:
