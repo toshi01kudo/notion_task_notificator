@@ -12,9 +12,9 @@ class BaseNotionDB:
     Notion APIとの通信、生データの取得、共通ヘッダーを扱う基底クラス。
 
     Args:
-        db_id: NotionデータベースID。
-        token: Notionインテグレーションの認証トークン。
-        version: Notion APIのバージョン。デフォルトは "2022-06-28"。
+        db_id (str): NotionデータベースID。
+        token (str): Notionインテグレーションの認証トークン。
+        version (str, optional): Notion APIのバージョン。デフォルトは "2022-06-28"。
     """
     def __init__(self, db_id: str, token: str, version: str = "2022-06-28") -> None:
         self.db_id = db_id
@@ -135,6 +135,98 @@ class BaseNotionDB:
             logging.error(f"Failed to update page {page_id}: {res.status_code} {res.text}")
             raise Exception(f"Notion Update Error: {res.status_code}")
         logging.info(f"Updated Notion Page: {page_id}")
+
+
+    def query(self, filter_payload: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """条件を指定してデータベースを検索し、結果を取得します。
+
+        requestsライブラリを使用して直接APIを叩きます。
+
+        Args:
+            filter_payload (Dict[str, Any]): Notion APIのフィルターオブジェクト。
+                例: {"property": "Status", "status": {"equals": "Done"}}
+
+        Returns:
+            List[Dict[str, Any]]: 取得したページのリスト（辞書形式）。
+            エラー時は空リストを返し、ログにエラーを出力します。
+        """
+        url = f"https://api.notion.com/v1/databases/{self.db_id}/query"
+        payload = {"filter": filter_payload} if filter_payload else {}
+        
+        try:
+            response = requests.post(url, headers=self.headers, json=payload)
+            response.raise_for_status()
+            return response.json().get("results", [])
+        except requests.exceptions.RequestException as e:
+            logging.error(f"Notion API query error: {e}")
+            return []
+
+
+    def create_page(self, properties: Dict[str, Any], children: Optional[List[Dict[str, Any]]] = None) -> Optional[Dict[str, Any]]:
+        """このデータベース(親)配下に新規ページを作成します。
+
+        Args:
+            properties (Dict[str, Any]): ページのプロパティ（タイトルなど）。
+            children (Optional[List[Dict[str, Any]]]): ページ内のブロックコンテンツ。
+
+        Returns:
+            Optional[Dict[str, Any]]: 作成されたページオブジェクト。失敗時はNone。
+        """
+        url = "https://api.notion.com/v1/pages"
+        
+        body = {
+            "parent": {"database_id": self.db_id},
+            "properties": properties
+        }
+        if children:
+            body["children"] = children
+
+        try:
+            response = requests.post(url, headers=self.headers, json=body)
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            logging.error(f"Notion create page error: {e}")
+            return None
+
+
+    def append_children(self, block_id: str, children: List[Dict[str, Any]]) -> Dict[str, Any]:
+            """指定したブロック（ページ）の子要素としてブロックを追加します。
+
+            Notion APIの制限（1回あたり100ブロック）を考慮し、分割して送信します。
+
+            Args:
+                block_id (str): 追加先のブロックIDまたはページID。
+                children (List[Dict[str, Any]]): 追加するブロックオブジェクトのリスト。
+
+            Returns:
+                Dict[str, Any]: 最後のバッチ処理のレスポンスJSON。エラー時は例外を送出します。
+            
+            Raises:
+                requests.exceptions.RequestException: APIリクエストが失敗した場合。
+            """
+            url = f"https://api.notion.com/v1/blocks/{block_id}/children"
+            
+            batch_size = 100
+            last_response = {}
+            
+            for i in range(0, len(children), batch_size):
+                batch = children[i : i + batch_size]
+                payload = {"children": batch}
+                
+                try:
+                    # Notion APIでは既存ブロックへの子ブロック追加は
+                    # /v1/blocks/{block_id}/children に対する PATCH で行う
+                    # （新規ページ作成は /v1/pages への POST を使用）
+                    response = requests.patch(url, headers=self.headers, json=payload)
+                    response.raise_for_status()
+                    last_response = response.json()
+                    logging.info(f"Appended blocks batch {i//batch_size + 1}")
+                except requests.exceptions.RequestException as e:
+                    logging.error(f"Append children error at batch {i}: {e}")
+                    raise e
+
+            return last_response
 
 
 class RelatedDB(BaseNotionDB):
@@ -328,3 +420,94 @@ class TaskDB(BaseNotionDB):
                 logging.error(f"タスク変換エラー ({raw_task.get('id', 'N/A')}, Name: {task_name}): {e}")
                 continue
         return tasks
+
+
+    def get_done_tasks(self, start_date: str, end_date: str) -> List[Dict[str, Any]]:
+        """指定期間内に完了したタスクを取得します。
+
+        Args:
+            start_date (str): 期間開始日 (ISO 8601形式: YYYY-MM-DD)。
+            end_date (str): 期間終了日 (ISO 8601形式: YYYY-MM-DD)。
+
+        Returns:
+            List[Dict[str, Any]]: 検索条件に合致したタスクページのリスト。
+        """
+        # ※プロパティ名は既存のCSV設定に合わせて「ステータス」「作業日」としています
+        filter_condition = {
+            "and": [
+                {
+                    "property": "ステータス", 
+                    "status": {
+                        "equals": "完了"
+                    }
+                },
+                {
+                    "property": "作業日",
+                    "date": {
+                        "on_or_after": start_date
+                    }
+                },
+                {
+                    "property": "作業日",
+                    "date": {
+                        "on_or_before": end_date
+                    }
+                }
+            ]
+        }
+        return self.query(filter_condition)
+
+
+class ReviewDB(BaseNotionDB):
+    """振り返りページ保存用のデータベースクラス。BaseNotionDBを継承。"""
+    
+    def _load_and_process_data(self) -> None:
+        """データロード処理のオーバーライド。
+
+        書き込み専用のため、初期化時の全件取得処理（重い処理）をスキップします。
+        """
+        pass
+
+    def create_review_page(self, title: str, content: str) -> Optional[Dict[str, Any]]:
+        """タイトルと本文を指定して振り返りページを作成します。
+
+        Args:
+            title (str): ページのタイトル（期間など）。
+            content (str): 本文（Geminiなどの生成結果）。
+
+        Returns:
+            Optional[Dict[str, Any]]: 作成されたページオブジェクト。失敗時はNone。
+        """
+        # 長文対策（Notion APIのブロック制限対策として簡易的にカット）
+        truncated_content = content[:2000]
+
+        properties = {
+            "Name": { # ※振り返りDBのタイトル列名に合わせてください
+                "title": [
+                    {
+                        "text": {
+                            "content": title
+                        }
+                    }
+                ]
+            }
+        }
+
+        children = [
+            {
+                "object": "block",
+                "type": "paragraph",
+                "paragraph": {
+                    "rich_text": [
+                        {
+                            "type": "text",
+                            "text": {
+                                "content": truncated_content
+                            }
+                        }
+                    ]
+                }
+            }
+        ]
+        
+        return self.create_page(properties, children)
