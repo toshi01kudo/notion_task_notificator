@@ -6,6 +6,7 @@ from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from typing import Dict, Any, List, Optional
 
+
 class GoogleCalendarAPI:
     """
     Google Calendar APIを操作するためのラッパークラス。
@@ -15,7 +16,8 @@ class GoogleCalendarAPI:
         calendar_id (str): 操作対象のカレンダーID。
         service (Resource): Google Calendar APIのサービスリソース。
     """
-    SCOPES = ['https://www.googleapis.com/auth/calendar']
+
+    SCOPES = ["https://www.googleapis.com/auth/calendar"]
 
     def __init__(self, key_file_path: str, calendar_id: str) -> None:
         """
@@ -26,10 +28,8 @@ class GoogleCalendarAPI:
             calendar_id (str): 操作対象のカレンダーID (メールアドレス形式)。
         """
         self.calendar_id = calendar_id
-        creds = service_account.Credentials.from_service_account_file(
-            key_file_path, scopes=self.SCOPES
-        )
-        self.service = build('calendar', 'v3', credentials=creds)
+        creds = service_account.Credentials.from_service_account_file(key_file_path, scopes=self.SCOPES)
+        self.service = build("calendar", "v3", credentials=creds)
 
     def list_events(self, start_date: datetime.date, end_date: datetime.date) -> List[Dict[str, Any]]:
         """
@@ -42,17 +42,17 @@ class GoogleCalendarAPI:
         Returns:
             List[Dict[str, Any]]: イベント情報の辞書リスト。イベントが見つからない場合は空リスト。
         """
-        time_min = start_date.isoformat() + 'T00:00:00Z'
-        time_max = end_date.isoformat() + 'T23:59:59Z'
-        
-        events_result = self.service.events().list(
-            calendarId=self.calendar_id,
-            timeMin=time_min,
-            timeMax=time_max,
-            singleEvents=True,
-            orderBy='startTime'
-        ).execute()
-        return events_result.get('items', [])
+        time_min = start_date.isoformat() + "T00:00:00Z"
+        time_max = end_date.isoformat() + "T23:59:59Z"
+
+        events_result = (
+            self.service.events()
+            .list(
+                calendarId=self.calendar_id, timeMin=time_min, timeMax=time_max, singleEvents=True, orderBy="startTime"
+            )
+            .execute()
+        )
+        return events_result.get("items", [])
 
     def create_event(self, title: str, start_date: datetime.date, description: str = "") -> str:
         """
@@ -67,16 +67,18 @@ class GoogleCalendarAPI:
             str: 作成されたイベントのID。
         """
         event = {
-            'summary': title,
-            'description': description,
-            'start': {'date': start_date.isoformat()},
-            'end': {'date': (start_date + datetime.timedelta(days=1)).isoformat()}, # 終日は+1日必要
+            "summary": title,
+            "description": description,
+            "start": {"date": start_date.isoformat()},
+            "end": {"date": (start_date + datetime.timedelta(days=1)).isoformat()},  # 終日は+1日必要
         }
         result = self.service.events().insert(calendarId=self.calendar_id, body=event).execute()
         logging.info(f"Created GCal Event: {title} ({result['id']})")
-        return result['id']
+        return result["id"]
 
-    def update_event(self, event_id: str, title: str, start_date: Optional[datetime.date], description: str = "") -> None:
+    def update_event(
+        self, event_id: str, title: str, start_date: Optional[datetime.date], description: str = ""
+    ) -> None:
         """
         既存のイベントを更新する。
 
@@ -86,17 +88,13 @@ class GoogleCalendarAPI:
             start_date (Optional[datetime.date]): 新しい日付。Noneの場合は日付を更新しない。
             description (str, optional): 新しい説明。デフォルトは空文字。
         """
-        body = {'summary': title, 'description': description}
-        
-        if start_date:
-            body['start'] = {'date': start_date.isoformat()}
-            body['end'] = {'date': (start_date + datetime.timedelta(days=1)).isoformat()}
+        body = {"summary": title, "description": description}
 
-        self.service.events().patch(
-            calendarId=self.calendar_id,
-            eventId=event_id,
-            body=body
-        ).execute()
+        if start_date:
+            body["start"] = {"date": start_date.isoformat()}
+            body["end"] = {"date": (start_date + datetime.timedelta(days=1)).isoformat()}
+
+        self.service.events().patch(calendarId=self.calendar_id, eventId=event_id, body=body).execute()
         logging.info(f"Updated GCal Event: {title} ({event_id})")
 
     def get_event(self, event_id: str) -> Optional[Dict[str, Any]]:
@@ -114,12 +112,8 @@ class GoogleCalendarAPI:
         except Exception:
             return None
 
-
     def get_events(
-        self,
-        start_time: datetime.datetime,
-        end_time: datetime.datetime,
-        calendar_id: Optional[str] = None
+        self, start_time: datetime.datetime, end_time: datetime.datetime, calendar_id: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         """指定された期間とカレンダーIDに基づいてイベントを取得します（日時ベース）。
 
@@ -141,15 +135,19 @@ class GoogleCalendarAPI:
             calendar_id = self.calendar_id
 
         # "YYYY-MM-DDTHH:MM:SSZ" の形式に強制変換します
-        time_min_str = start_time.astimezone(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
-        time_max_str = end_time.astimezone(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
-        
-        events_result = self.service.events().list(
-            calendarId=calendar_id,
-            timeMin=time_min_str,
-            timeMax=time_max_str,
-            singleEvents=True,
-            orderBy='startTime'
-        ).execute()
-        
-        return events_result.get('items', [])
+        time_min_str = start_time.astimezone(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        time_max_str = end_time.astimezone(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        events_result = (
+            self.service.events()
+            .list(
+                calendarId=calendar_id,
+                timeMin=time_min_str,
+                timeMax=time_max_str,
+                singleEvents=True,
+                orderBy="startTime",
+            )
+            .execute()
+        )
+
+        return events_result.get("items", [])
